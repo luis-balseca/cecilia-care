@@ -1,126 +1,5 @@
-// ═══════════════════════════════════════════════════════════
-// SECURITY — passphrase hashed with SHA-256 via Web Crypto API
-// Session stored in sessionStorage (cleared when tab closes)
-// Auto-lock after 8 hours of inactivity
-// ═══════════════════════════════════════════════════════════
-
-const AUTH_KEY   = 'cecilia_auth_hash';   // localStorage: hashed passphrase
-const SESSION_KEY = 'cecilia_session';    // sessionStorage: unlock timestamp
-const SESSION_TTL = 8 * 60 * 60 * 1000;  // 8 hours in ms
-const DEFAULT_PASS = 'balseca2026';
-
-// Hash a string with SHA-256, return hex string
-async function sha256(str) {
-  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
-// On load: check session then render lock or app
-window.addEventListener('DOMContentLoaded', async () => {
-  // Ensure default hash is set if first visit
-  if (!localStorage.getItem(AUTH_KEY)) {
-    const h = await sha256(DEFAULT_PASS);
-    localStorage.setItem(AUTH_KEY, h);
-  }
-
-  // Check active session
-  const sess = sessionStorage.getItem(SESSION_KEY);
-  if (sess && (Date.now() - parseInt(sess)) < SESSION_TTL) {
-    showApp();
-  }
-  // else lock screen stays visible
-});
-
-async function unlock() {
-  const input = document.getElementById('lock-input').value;
-  const errEl = document.getElementById('lock-error');
-  errEl.textContent = '';
-
-  if (!input) {
-    errEl.textContent = 'Please enter the passphrase.';
-    return;
-  }
-
-  const inputHash  = await sha256(input);
-  const storedHash = localStorage.getItem(AUTH_KEY);
-
-  if (inputHash === storedHash) {
-    sessionStorage.setItem(SESSION_KEY, Date.now().toString());
-    document.getElementById('lock-input').value = '';
-    showApp();
-  } else {
-    errEl.textContent = 'Incorrect passphrase. Please try again.';
-    document.getElementById('lock-input').value = '';
-    document.getElementById('lock-input').focus();
-  }
-}
-
-function lockApp() {
-  sessionStorage.removeItem(SESSION_KEY);
-  document.getElementById('app').classList.add('app-hidden');
-  document.getElementById('lock-screen').style.display = 'flex';
-  document.getElementById('lock-input').value = '';
-  document.getElementById('lock-error').textContent = '';
-  // Close sidebar on mobile
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('overlay').classList.remove('show');
-}
-
-function showApp() {
-  document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('app').classList.remove('app-hidden');
-  document.getElementById('app').style.display = 'flex';
-  setDate();
-  renderAll();
-  populateSettingsForm();
-}
-
-async function changePassphrase() {
-  const current  = document.getElementById('pw-current').value;
-  const newPw    = document.getElementById('pw-new').value;
-  const confirm  = document.getElementById('pw-confirm').value;
-  const errEl    = document.getElementById('pw-error');
-  errEl.textContent = '';
-
-  if (!current || !newPw || !confirm) {
-    errEl.textContent = 'Please fill in all three fields.'; return;
-  }
-  if (newPw.length < 8) {
-    errEl.textContent = 'New passphrase must be at least 8 characters.'; return;
-  }
-  if (newPw !== confirm) {
-    errEl.textContent = 'New passphrases do not match.'; return;
-  }
-
-  const currentHash = await sha256(current);
-  const storedHash  = localStorage.getItem(AUTH_KEY);
-
-  if (currentHash !== storedHash) {
-    errEl.textContent = 'Current passphrase is incorrect.'; return;
-  }
-
-  const newHash = await sha256(newPw);
-  localStorage.setItem(AUTH_KEY, newHash);
-  document.getElementById('pw-current').value = '';
-  document.getElementById('pw-new').value = '';
-  document.getElementById('pw-confirm').value = '';
-  showToast('Passphrase updated ✓ Share it with the family.');
-}
-
-// Auto-lock on visibility change (tab hidden for > 8h)
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    const sess = sessionStorage.getItem(SESSION_KEY);
-    if (!sess || (Date.now() - parseInt(sess)) >= SESSION_TTL) {
-      lockApp();
-    }
-  }
-});
-
-// ═══════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════
-const KEY = 'cecilia_care_v2';
+// ── STATE ──────────────────────────────────────────────────────────────
+const KEY = 'cecilia_care_v1';
 
 const DEFAULT = {
   patient: {
@@ -134,7 +13,6 @@ const DEFAULT = {
   },
   you: { name: 'Luis', email: 'luis.balseca.1@gmail.com' },
   siblings: [
-    { name: 'Guillermo (Dad)', email: '' },
     { name: 'Anita', email: 'adriana.balseca@gmail.com' },
     { name: 'Santi', email: 'Santi.balseca@googlemail.com' }
   ],
@@ -157,7 +35,7 @@ const DEFAULT = {
   ],
   contacts: [
     { id: 1, name: "St Bartholomew's Hospital", phone: '020 3416 5000', email: '', cat: 'Hospital' },
-    { id: 2, name: "Dr. Powell's Secretary",    phone: '',              email: '', cat: 'Hospital' }
+    { id: 2, name: "Dr. Powell's Secretary", phone: '', email: '', cat: 'Hospital' }
   ]
 };
 
@@ -175,11 +53,15 @@ function saveState() {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
-// ═══════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════
+// ── INIT ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  setDate();
+  renderAll();
+  populateSettingsForm();
+});
+
 function setDate() {
-  const opts = { weekday:'long', day:'numeric', month:'long', year:'numeric' };
+  const opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
   document.getElementById('today-date').textContent =
     new Date().toLocaleDateString('en-GB', opts);
 }
@@ -196,17 +78,15 @@ function renderAll() {
   renderSiblingList();
 }
 
-// ═══════════════════════════════════════════════════════════
-// NAVIGATION
-// ═══════════════════════════════════════════════════════════
+// ── NAVIGATION ─────────────────────────────────────────────────────────
 function showPage(id, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   if (el) el.classList.add('active');
   const titles = {
-    overview:'Overview', appointments:'Appointments', notes:'My Notes',
-    medications:'Medications', contacts:'Contacts', settings:'Setup'
+    overview: 'Overview', appointments: 'Appointments', notes: 'My Notes',
+    medications: 'Medications', contacts: 'Contacts', settings: 'Setup'
   };
   document.getElementById('page-title').textContent = titles[id] || id;
   closeSidebarOnMobile();
@@ -223,15 +103,13 @@ function closeSidebarOnMobile() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// HERO & STATS
-// ═══════════════════════════════════════════════════════════
+// ── HERO / STATS ───────────────────────────────────────────────────────
 function renderHero() {
   const p = state.patient;
-  document.getElementById('hero-name').textContent      = p.name || 'Cecilia';
+  document.getElementById('hero-name').textContent = p.name || 'Cecilia';
   document.getElementById('hero-diagnosis').textContent =
     [p.cancer, p.stage].filter(Boolean).join(' · ') || 'Cancer treatment';
-  document.getElementById('hero-doctor').textContent    =
+  document.getElementById('hero-doctor').textContent =
     [p.doctor, p.hospital].filter(Boolean).join(' · ') || '';
 }
 
@@ -239,13 +117,11 @@ function renderStats() {
   const now = new Date(); now.setHours(0,0,0,0);
   const upcoming = state.appointments.filter(a => new Date(a.date) >= now).length;
   document.getElementById('stat-upcoming').textContent = upcoming;
-  document.getElementById('stat-notes').textContent    = state.notes.length;
-  document.getElementById('stat-meds').textContent     = state.medications.length;
+  document.getElementById('stat-notes').textContent = state.notes.length;
+  document.getElementById('stat-meds').textContent = state.medications.length;
 }
 
-// ═══════════════════════════════════════════════════════════
-// OVERVIEW
-// ═══════════════════════════════════════════════════════════
+// ── OVERVIEW ───────────────────────────────────────────────────────────
 function renderNextAppt() {
   const now = new Date(); now.setHours(0,0,0,0);
   const upcoming = state.appointments
@@ -253,45 +129,44 @@ function renderNextAppt() {
     .sort((a,b) => new Date(a.date) - new Date(b.date));
   const el = document.getElementById('next-appt-card');
   if (!upcoming.length) {
-    el.innerHTML = '<div class="empty-state">No upcoming appointments.</div>'; return;
+    el.innerHTML = '<div class="empty-state">No upcoming appointments.</div>';
+    return;
   }
-  el.innerHTML = apptCardHTML(upcoming[0], false);
+  el.innerHTML = apptCardHTML(upcoming[0]);
 }
 
 function renderRecentNotes() {
   const el = document.getElementById('recent-notes-list');
   if (!state.notes.length) {
-    el.innerHTML = '<div class="empty-state">No notes yet.</div>'; return;
+    el.innerHTML = '<div class="empty-state">No notes yet.</div>';
+    return;
   }
-  el.innerHTML = [...state.notes].sort((a,b) => b.id - a.id).slice(0,2)
-    .map(n => noteItemHTML(n, false)).join('');
+  const recent = [...state.notes].sort((a,b) => b.id - a.id).slice(0, 2);
+  el.innerHTML = recent.map(n => noteItemHTML(n)).join('');
 }
 
-// ═══════════════════════════════════════════════════════════
-// APPOINTMENTS
-// ═══════════════════════════════════════════════════════════
+// ── APPOINTMENTS ───────────────────────────────────────────────────────
 function addAppointment() {
   const type     = document.getElementById('a-type').value;
   const date     = document.getElementById('a-date').value;
+  const time     = document.getElementById('a-time').value;
+  const doctor   = document.getElementById('a-doctor').value.trim();
+  const hospital = document.getElementById('a-hospital').value.trim() || state.patient.hospital;
+  const ward     = document.getElementById('a-ward').value.trim();
+  const duration = parseInt(document.getElementById('a-duration').value) || 60;
+  const notes    = document.getElementById('a-notes').value.trim();
+
   if (!type) { showToast('Please select an appointment type.'); return; }
   if (!date) { showToast('Please enter a date.'); return; }
 
-  const appt = {
-    id:       Date.now(),
-    type,
-    date,
-    time:     document.getElementById('a-time').value,
-    doctor:   document.getElementById('a-doctor').value.trim(),
-    hospital: document.getElementById('a-hospital').value.trim() || state.patient.hospital,
-    ward:     document.getElementById('a-ward').value.trim(),
-    duration: parseInt(document.getElementById('a-duration').value) || 60,
-    notes:    document.getElementById('a-notes').value.trim()
-  };
+  const appt = { id: Date.now(), type, date, time, doctor, hospital, ward, duration, notes };
   state.appointments.push(appt);
   saveState();
   renderAll();
+
   ['a-type','a-date','a-time','a-doctor','a-hospital','a-ward','a-duration','a-notes']
-    .forEach(id => document.getElementById(id).value = '');
+    .forEach(id => { const el = document.getElementById(id); el.value = ''; });
+
   showToast('Appointment added ✓');
 }
 
@@ -305,51 +180,58 @@ function deleteAppointment(id) {
 function renderApptList() {
   const el = document.getElementById('appt-list-full');
   if (!state.appointments.length) {
-    el.innerHTML = '<div class="empty-state">No appointments added yet.</div>'; return;
+    el.innerHTML = '<div class="empty-state">No appointments added yet.</div>';
+    return;
   }
-  el.innerHTML = [...state.appointments]
-    .sort((a,b) => new Date(a.date) - new Date(b.date))
-    .map(a => apptCardHTML(a, true)).join('');
+  const sorted = [...state.appointments].sort((a,b) => new Date(a.date) - new Date(b.date));
+  el.innerHTML = sorted.map(a => apptCardHTML(a, true)).join('');
 }
 
 function apptCardHTML(a, showDelete = false) {
-  const d      = new Date(a.date + 'T' + (a.time || '00:00'));
-  const now    = new Date(); now.setHours(0,0,0,0);
+  const d = new Date(a.date + 'T' + (a.time || '00:00'));
+  const now = new Date(); now.setHours(0,0,0,0);
   const isPast = new Date(a.date) < now;
   const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
   const timeStr = a.time ? d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : '';
-  const badge   = isPast
+  const badge = isPast
     ? '<span class="badge badge-grey">Past</span>'
     : '<span class="badge badge-green">Upcoming</span>';
-  const del = showDelete
-    ? `<button class="btn-icon" onclick="deleteAppointment(${a.id})" title="Remove" aria-label="Delete">✕</button>`
+  const deleteBtn = showDelete
+    ? `<button class="btn-icon" onclick="deleteAppointment(${a.id})" title="Remove" aria-label="Delete appointment">✕</button>`
     : '';
+
   return `<div class="appt-item">
     <div class="item-icon">◷</div>
     <div class="item-body">
       <div class="item-title">${a.type}</div>
       <div class="item-meta">
-        ${dateStr}${timeStr ? ' at ' + timeStr : ''}${a.duration ? ' · ' + a.duration + ' min' : ''}<br>
-        ${a.hospital || ''}${a.ward ? ' · ' + a.ward : ''}
+        ${dateStr}${timeStr ? ' at ' + timeStr : ''} ${a.duration ? '· ' + a.duration + ' min' : ''}<br>
+        ${a.hospital ? a.hospital : ''}${a.ward ? ' · ' + a.ward : ''}
         ${a.doctor ? '<br>' + a.doctor : ''}
         ${a.notes ? '<br><em>' + a.notes + '</em>' : ''}
       </div>
       <div style="margin-top:6px">${badge}</div>
     </div>
-    <div class="item-actions">${del}</div>
+    <div class="item-actions">${deleteBtn}</div>
   </div>`;
 }
 
-// ═══════════════════════════════════════════════════════════
-// NOTES
-// ═══════════════════════════════════════════════════════════
+// ── NOTES ──────────────────────────────────────────────────────────────
 function saveNote() {
   const title = document.getElementById('note-title').value.trim();
   const body  = document.getElementById('note-body').value.trim();
   if (!body) { showToast('Please write something first.'); return; }
-  state.notes.unshift({ id: Date.now(), title: title || 'Note', body, date: new Date().toISOString() });
+
+  const note = {
+    id: Date.now(),
+    title: title || 'Note',
+    body,
+    date: new Date().toISOString()
+  };
+  state.notes.unshift(note);
   saveState();
   renderAll();
+
   document.getElementById('note-title').value = '';
   document.getElementById('note-body').value  = '';
   showToast('Note saved ✓');
@@ -368,18 +250,20 @@ function openNote(id) {
   document.getElementById('note-title').value = note.title;
   document.getElementById('note-body').value  = note.body;
   showPage('notes', document.querySelectorAll('.nav-link')[2]);
+  showToast('Note loaded for editing.');
 }
 
 function renderNotesList() {
   const el = document.getElementById('notes-list');
   if (!state.notes.length) {
-    el.innerHTML = '<div class="empty-state">No notes yet — start writing above.</div>'; return;
+    el.innerHTML = '<div class="empty-state">No notes yet — start writing above.</div>';
+    return;
   }
   el.innerHTML = state.notes.map(n => noteItemHTML(n, true)).join('');
 }
 
 function noteItemHTML(n, showActions = false) {
-  const d       = new Date(n.date);
+  const d = new Date(n.date);
   const dateStr = d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
   const timeStr = d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
   const preview = n.body.replace(/\n/g,' ').slice(0, 80) + (n.body.length > 80 ? '…' : '');
@@ -388,6 +272,7 @@ function noteItemHTML(n, showActions = false) {
       <button class="btn-icon" onclick="openNote(${n.id})" title="Edit" aria-label="Edit note">✎</button>
       <button class="btn-icon" onclick="deleteNote(${n.id})" title="Delete" aria-label="Delete note">✕</button>
     </div>` : '';
+
   return `<div class="note-item" onclick="openNote(${n.id})">
     <div class="item-icon">✎</div>
     <div class="item-body">
@@ -399,22 +284,24 @@ function noteItemHTML(n, showActions = false) {
   </div>`;
 }
 
-// ═══════════════════════════════════════════════════════════
-// MEDICATIONS
-// ═══════════════════════════════════════════════════════════
+// ── MEDICATIONS ────────────────────────────────────────────────────────
 function addMedication() {
   const name = document.getElementById('m-name').value.trim();
   if (!name) { showToast('Please enter a medication name.'); return; }
-  state.medications.push({
-    id: Date.now(), name,
+
+  const med = {
+    id: Date.now(),
+    name,
     dose:       document.getElementById('m-dose').value.trim(),
     freq:       document.getElementById('m-freq').value,
     prescribed: document.getElementById('m-prescribed').value.trim(),
     notes:      document.getElementById('m-notes').value.trim()
-  });
+  };
+  state.medications.push(med);
   saveState();
   renderAll();
-  ['m-name','m-dose','m-freq','m-prescribed','m-notes'].forEach(id => document.getElementById(id).value = '');
+  ['m-name','m-dose','m-freq','m-prescribed','m-notes']
+    .forEach(id => { document.getElementById(id).value = ''; });
   showToast('Medication added ✓');
 }
 
@@ -428,7 +315,8 @@ function deleteMedication(id) {
 function renderMedList() {
   const el = document.getElementById('med-list');
   if (!state.medications.length) {
-    el.innerHTML = '<div class="empty-state">No medications added yet.</div>'; return;
+    el.innerHTML = '<div class="empty-state">No medications added yet.</div>';
+    return;
   }
   el.innerHTML = state.medications.map(m => `
     <div class="med-item">
@@ -436,31 +324,32 @@ function renderMedList() {
       <div class="item-body">
         <div class="item-title">${m.name}${m.dose ? ' — ' + m.dose : ''}</div>
         <div class="item-meta">
-          ${m.freq || ''}${m.prescribed ? ' · ' + m.prescribed : ''}
+          ${m.freq ? m.freq : ''}${m.prescribed ? ' · ' + m.prescribed : ''}
           ${m.notes ? '<br><em>' + m.notes + '</em>' : ''}
         </div>
       </div>
       <div class="item-actions">
-        <button class="btn-icon" onclick="deleteMedication(${m.id})" title="Remove" aria-label="Remove">✕</button>
+        <button class="btn-icon" onclick="deleteMedication(${m.id})" title="Remove" aria-label="Remove medication">✕</button>
       </div>
     </div>`).join('');
 }
 
-// ═══════════════════════════════════════════════════════════
-// CONTACTS
-// ═══════════════════════════════════════════════════════════
+// ── CONTACTS ───────────────────────────────────────────────────────────
 function addContact() {
   const name = document.getElementById('c-name').value.trim();
   if (!name) { showToast('Please enter a name.'); return; }
-  state.contacts.push({
-    id: Date.now(), name,
+
+  const contact = {
+    id:    Date.now(),
+    name,
     phone: document.getElementById('c-phone').value.trim(),
     email: document.getElementById('c-email').value.trim(),
     cat:   document.getElementById('c-cat').value
-  });
+  };
+  state.contacts.push(contact);
   saveState();
   renderContactsList();
-  ['c-name','c-phone','c-email'].forEach(id => document.getElementById(id).value = '');
+  ['c-name','c-phone','c-email'].forEach(id => { document.getElementById(id).value = ''; });
   showToast('Contact added ✓');
 }
 
@@ -474,9 +363,10 @@ function deleteContact(id) {
 function renderContactsList() {
   const el = document.getElementById('contacts-list');
   if (!state.contacts.length) {
-    el.innerHTML = '<div class="empty-state">No contacts added yet.</div>'; return;
+    el.innerHTML = '<div class="empty-state">No contacts added yet.</div>';
+    return;
   }
-  const catBadge = { Hospital:'badge-rose', GP:'badge-green', Family:'badge-blue', Emergency:'badge-rose', Other:'badge-grey' };
+  const catBadge = { Hospital: 'badge-rose', GP: 'badge-green', Family: 'badge-blue', Emergency: 'badge-rose', Other: 'badge-grey' };
   el.innerHTML = state.contacts.map(c => `
     <div class="contact-item">
       <div class="item-icon">◎</div>
@@ -490,14 +380,12 @@ function renderContactsList() {
         <div style="margin-top:5px"><span class="badge ${catBadge[c.cat]||'badge-grey'}">${c.cat}</span></div>
       </div>
       <div class="item-actions">
-        <button class="btn-icon" onclick="deleteContact(${c.id})" title="Remove" aria-label="Remove">✕</button>
+        <button class="btn-icon" onclick="deleteContact(${c.id})" title="Remove" aria-label="Remove contact">✕</button>
       </div>
     </div>`).join('');
 }
 
-// ═══════════════════════════════════════════════════════════
-// SETTINGS
-// ═══════════════════════════════════════════════════════════
+// ── SETTINGS ───────────────────────────────────────────────────────────
 function populateSettingsForm() {
   const p = state.patient;
   document.getElementById('s-name').value      = p.name      || '';
@@ -539,7 +427,7 @@ function saveContacts() {
 function addSibling() {
   const name  = document.getElementById('sib-name').value.trim();
   const email = document.getElementById('sib-email').value.trim();
-  if (!name && !email) { showToast('Please enter a name or email.'); return; }
+  if (!email) { showToast('Please enter an email address.'); return; }
   state.siblings.push({ name: name || email, email });
   saveState();
   renderSiblingList();
@@ -554,17 +442,15 @@ function removeSibling(idx) {
 }
 
 function renderSiblingList() {
-  document.getElementById('sibling-list').innerHTML =
-    state.siblings.map((s, i) => `
-      <span class="sibling-tag">
-        ${s.name}${s.email ? ' &lt;' + s.email + '&gt;' : ' (no email yet)'}
-        <button onclick="removeSibling(${i})" aria-label="Remove ${s.name}">×</button>
-      </span>`).join('');
+  const el = document.getElementById('sibling-list');
+  el.innerHTML = state.siblings.map((s, i) => `
+    <span class="sibling-tag">
+      ${s.name} &lt;${s.email}&gt;
+      <button onclick="removeSibling(${i})" aria-label="Remove ${s.name}">×</button>
+    </span>`).join('');
 }
 
-// ═══════════════════════════════════════════════════════════
-// EXPORT
-// ═══════════════════════════════════════════════════════════
+// ── EXPORT ─────────────────────────────────────────────────────────────
 function exportData() {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
@@ -576,9 +462,7 @@ function exportData() {
   showToast('Data exported ✓');
 }
 
-// ═══════════════════════════════════════════════════════════
-// TOAST
-// ═══════════════════════════════════════════════════════════
+// ── TOAST ──────────────────────────────────────────────────────────────
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
